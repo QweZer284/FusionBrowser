@@ -1,1 +1,60 @@
-main.yml
+name: Build Fusion Browser
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt 6.8 with WebEngine
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.2'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2022_64'
+          modules: 'qtwebengine qtwebchannel qtpositioning'
+          cache: true
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Ninja
+        run: choco install ninja -y
+
+      - name: Configure CMake
+        run: |
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_PREFIX_PATH="${{ env.Qt6_DIR }}"
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Find and copy exe
+        run: |
+          $exe = Get-ChildItem -Recurse -Filter "Fusion.exe" | Select-Object -First 1
+          New-Item -ItemType Directory -Force -Path dist\Fusion
+          Copy-Item $exe.FullName dist\Fusion\Fusion.exe
+          if (Test-Path "resources\fusion.ico") {
+            Copy-Item resources\fusion.ico dist\Fusion\
+          }
+
+      - name: windeployqt
+        run: windeployqt --release --webengine dist\Fusion\Fusion.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fusion-Browser-Windows
+          path: dist\Fusion\
+          retention-days: 30
