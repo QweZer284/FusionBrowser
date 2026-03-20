@@ -5,6 +5,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -29,28 +32,24 @@ jobs:
           arch: x64
 
       - name: Install Ninja
-        run: choco install ninja -y
+        run: choco install ninja -y --no-progress
 
       - name: Configure CMake
         run: |
-          cmake -S . -B build -G Ninja `
+          cmake -S . -B build -G "Ninja" `
             -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_PREFIX_PATH="${{ env.Qt6_DIR }}"
+            -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
 
       - name: Build
         run: cmake --build build --config Release --parallel
 
-      - name: Find and copy exe
+      - name: Prepare dist
         run: |
           $exe = Get-ChildItem -Recurse -Filter "Fusion.exe" | Select-Object -First 1
-          New-Item -ItemType Directory -Force -Path dist\Fusion
-          Copy-Item $exe.FullName dist\Fusion\Fusion.exe
-          if (Test-Path "resources\fusion.ico") {
-            Copy-Item resources\fusion.ico dist\Fusion\
-          }
-
-      - name: windeployqt
-        run: windeployqt --release --webengine dist\Fusion\Fusion.exe
+          New-Item -ItemType Directory -Force -Path "dist\Fusion" | Out-Null
+          Copy-Item $exe.FullName "dist\Fusion\Fusion.exe"
+          if (Test-Path "resources\fusion.ico") { Copy-Item "resources\fusion.ico" "dist\Fusion\" }
+          windeployqt --release --webengine "dist\Fusion\Fusion.exe"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
