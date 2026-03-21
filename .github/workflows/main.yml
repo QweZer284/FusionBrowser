@@ -32,6 +32,33 @@ jobs:
         shell: pwsh
         run: choco install ninja -y --no-progress
 
+      - name: Create placeholder fusion.ico
+        shell: pwsh
+        run: |
+          $icoPath = "FusionBrowser\resources\fusion.ico"
+          # Minimal valid 16x16 ICO file (binary)
+          $bytes = [byte[]](
+            0x00,0x00,0x01,0x00,0x01,0x00,0x10,0x10,
+            0x00,0x00,0x01,0x00,0x18,0x00,0x68,0x03,
+            0x00,0x00,0x16,0x00,0x00,0x00,0x28,0x00,
+            0x00,0x00,0x10,0x00,0x00,0x00,0x20,0x00,
+            0x00,0x00,0x01,0x00,0x18,0x00,0x00,0x00,
+            0x00,0x00,0x00,0x03,0x00,0x00,0x00,0x00,
+            0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            0x00,0x00,0x00,0x00,0x00,0x00
+          )
+          # Pad to correct size with blue pixels (0x00 0x77 0xFF = blue)
+          $pixelData = [byte[]](0x00) * (16 * 16 * 3 + 16 * 16 / 8)
+          # Fill with a blue color for all pixels
+          for ($i = 0; $i -lt 16 * 16; $i++) {
+            $pixelData[$i * 3 + 0] = 0xFF  # Blue
+            $pixelData[$i * 3 + 1] = 0x77  # Green
+            $pixelData[$i * 3 + 2] = 0x00  # Red (BGR format)
+          }
+          $fullIco = $bytes + $pixelData
+          [System.IO.File]::WriteAllBytes($icoPath, $fullIco)
+          Write-Host "Created fusion.ico at $icoPath"
+
       - name: Configure CMake
         shell: pwsh
         run: cmake -S FusionBrowser -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$env:Qt6_DIR"
@@ -45,11 +72,10 @@ jobs:
         run: |
           $exe = Get-ChildItem -Recurse -Filter "Fusion.exe" | Select-Object -First 1
           if (-not $exe) { throw "Fusion.exe not found!" }
+          Write-Host "Exe found: $($exe.FullName)"
           New-Item -ItemType Directory -Force -Path "dist\Fusion" | Out-Null
           Copy-Item $exe.FullName "dist\Fusion\Fusion.exe"
-          if (Test-Path "FusionBrowser\resources\fusion.ico") {
-            Copy-Item "FusionBrowser\resources\fusion.ico" "dist\Fusion\"
-          }
+          Copy-Item "FusionBrowser\resources\fusion.ico" "dist\Fusion\" -ErrorAction SilentlyContinue
           & "$env:Qt6_DIR\bin\windeployqt.exe" --release --webengine "dist\Fusion\Fusion.exe"
 
       - name: Upload
