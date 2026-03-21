@@ -34,9 +34,7 @@ jobs:
 
       - name: Configure CMake
         shell: pwsh
-        run: |
-          Write-Host "Qt6_DIR = $env:Qt6_DIR"
-          cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$env:Qt6_DIR"
+        run: cmake -S FusionBrowser -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$env:Qt6_DIR"
 
       - name: Build
         shell: pwsh
@@ -47,11 +45,10 @@ jobs:
         run: |
           $exe = Get-ChildItem -Recurse -Filter "Fusion.exe" | Select-Object -First 1
           if (-not $exe) { throw "Fusion.exe not found!" }
-          Write-Host "Exe: $($exe.FullName)"
           New-Item -ItemType Directory -Force -Path "dist\Fusion" | Out-Null
           Copy-Item $exe.FullName "dist\Fusion\Fusion.exe"
-          if (Test-Path "resources\fusion.ico") {
-            Copy-Item "resources\fusion.ico" "dist\Fusion\"
+          if (Test-Path "FusionBrowser\resources\fusion.ico") {
+            Copy-Item "FusionBrowser\resources\fusion.ico" "dist\Fusion\"
           }
           & "$env:Qt6_DIR\bin\windeployqt.exe" --release --webengine "dist\Fusion\Fusion.exe"
 
