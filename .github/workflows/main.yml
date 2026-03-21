@@ -32,11 +32,95 @@ jobs:
         shell: pwsh
         run: choco install ninja -y --no-progress
 
-      - name: Apply source patches
+      - name: Patch source files
         shell: pwsh
-        run: python FusionBrowser/fix_sources.py
+        run: |
+          $src = "FusionBrowser\src"
 
-      - name: Create placeholder fusion.ico
+          # ── mainwindow.cpp: add windowsx.h for GET_X/Y_LPARAM ──
+          $f = "$src\mainwindow.cpp"
+          $c = Get-Content $f -Raw
+          if ($c -notmatch 'windowsx\.h') {
+            $c = $c -replace '#include <windows\.h>', "#include <windows.h>`n#include <windowsx.h>"
+            Set-Content $f $c -NoNewline
+            Write-Host "Patched mainwindow.cpp"
+          }
+
+          # ── tabbar.h: replace constexpr with enum ──
+          $f = "$src\tabbar.h"
+          $c = Get-Content $f -Raw
+          $c = $c -replace 'static constexpr int TL_W\s+=\s+72;', ''
+          $c = $c -replace 'static constexpr int PLUS_W\s+=\s+22;', ''
+          $c = $c -replace 'static constexpr int PLUS_H\s+=\s+22;', ''
+          $c = $c -replace 'static constexpr int PLUS_GAP\s+=\s+4;', ''
+          if ($c -notmatch 'enum.*TL_W') {
+            $c = $c -replace 'private:', "private:`n    enum { TL_W=72, PLUS_W=22, PLUS_H=22, PLUS_GAP=4 };"
+            Set-Content $f $c -NoNewline
+            Write-Host "Patched tabbar.h"
+          }
+
+          # ── downloadspanel.h: add missing includes ──
+          $f = "$src\downloadspanel.h"
+          $c = Get-Content $f -Raw
+          if ($c -notmatch '#include <QFrame>') {
+            $c = $c -replace '#pragma once', "#pragma once`n#include <QFrame>`n#include <QLabel>`n#include <QProgressBar>"
+            Set-Content $f $c -NoNewline
+            Write-Host "Patched downloadspanel.h"
+          }
+
+          # ── browsertab.cpp: add QWebEngineNewWindowRequest include ──
+          $f = "$src\browsertab.cpp"
+          $c = Get-Content $f -Raw
+          if ($c -notmatch 'QWebEngineNewWindowRequest') {
+            $c = $c -replace '#include "browsertab\.h"', "#include `"browsertab.h`"`n#include <QWebEngineNewWindowRequest>"
+            Set-Content $f $c -NoNewline
+            Write-Host "Patched browsertab.cpp"
+          }
+
+          # ── settingspanel.cpp: fix structured binding for engines loop ──
+          $f = "$src\settingspanel.cpp"
+          $c = Get-Content $f -Raw
+          $old = 'for (const auto& pair : engines) {
+        const QString k = pair.first;
+        const QString lb = pair.second;'
+          if ($c -notmatch [regex]::Escape('const QString k = pair.first')) {
+            $c = $c -replace 'for \(const auto& pair : engines\) \{', 'for (int _ei=0; _ei<engines.size(); ++_ei) { const QString k=engines[_ei].first; const QString lb=engines[_ei].second;'
+            Set-Content $f $c -NoNewline
+            Write-Host "Patched settingspanel.cpp"
+          }
+
+          # ── extensions.cpp: fix structured binding ──
+          $f = "$src\extensions.cpp"
+          $c = Get-Content $f -Raw
+          $c = $c -replace 'const auto& \[hex, label\] = accents\[i\];', 'const QString hex = accents[i].first; const QString label = accents[i].second;'
+          Set-Content $f $c -NoNewline
+          Write-Host "Patched extensions.cpp"
+
+          # ── onboarding.cpp: fix tuple structured binding ──
+          $f = "$src\onboarding.cpp"
+          $c = Get-Content $f -Raw
+          # Fix QPair loop
+          $c = $c -replace 'for \(const auto& \[k, lb\] : QList<QPair<QString,QString>>\{', 'for (const auto& _p : QList<QPair<QString,QString>>{'
+          $c = $c -replace '\{"google","Google"\},\{"bing","Bing"\},\{"ddg","DuckDuckGo"\}\}\)', '{"google","Google"},{"bing","Bing"},{"ddg","DuckDuckGo"}})'
+          # After the for loop opening, insert binding
+          $c = $c -replace '("google","Google"),\{"bing","Bing"\},\{"ddg","DuckDuckGo"\}\}\)\s*\{', '{"google","Google"},{"bing","Bing"},{"ddg","DuckDuckGo"}}) { const QString k=_p.first; const QString lb=_p.second;'
+          # Fix tuple binding
+          $c = $c -replace 'for \(const auto& \[key, lbl, emoji, desc\]', 'for (const auto& _te'
+          Set-Content $f $c -NoNewline
+          Write-Host "Patched onboarding.cpp"
+
+          # ── homepage.cpp: add QRegularExpression ──
+          $f = "$src\homepage.cpp"
+          $c = Get-Content $f -Raw
+          if ($c -notmatch 'QRegularExpression') {
+            $c = $c -replace '#include <QDateTime>', "#include <QDateTime>`n#include <QRegularExpression>"
+            Set-Content $f $c -NoNewline
+            Write-Host "Patched homepage.cpp"
+          }
+
+          Write-Host "All patches done."
+
+      - name: Create resources folder and fusion.ico
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "FusionBrowser\resources" | Out-Null
@@ -46,11 +130,11 @@ jobs:
           $g.Clear([System.Drawing.Color]::FromArgb(10, 122, 255))
           $g.Dispose()
           $ico = [System.Drawing.Icon]::FromHandle($bmp.GetHicon())
-          $stream = [System.IO.File]::OpenWrite("FusionBrowser\resources\fusion.ico")
+          $stream = [System.IO.File]::Create("FusionBrowser\resources\fusion.ico")
           $ico.Save($stream)
           $stream.Close()
           $bmp.Dispose()
-          Write-Host "Done: $(Test-Path 'FusionBrowser\resources\fusion.ico')"
+          Write-Host "fusion.ico ready: $(Test-Path 'FusionBrowser\resources\fusion.ico')"
 
       - name: Configure CMake
         shell: pwsh
