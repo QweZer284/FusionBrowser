@@ -32,32 +32,25 @@ jobs:
         shell: pwsh
         run: choco install ninja -y --no-progress
 
+      - name: Apply source patches
+        shell: pwsh
+        run: python FusionBrowser/fix_sources.py
+
       - name: Create placeholder fusion.ico
         shell: pwsh
         run: |
-          $icoPath = "FusionBrowser\resources\fusion.ico"
-          # Minimal valid 16x16 ICO file (binary)
-          $bytes = [byte[]](
-            0x00,0x00,0x01,0x00,0x01,0x00,0x10,0x10,
-            0x00,0x00,0x01,0x00,0x18,0x00,0x68,0x03,
-            0x00,0x00,0x16,0x00,0x00,0x00,0x28,0x00,
-            0x00,0x00,0x10,0x00,0x00,0x00,0x20,0x00,
-            0x00,0x00,0x01,0x00,0x18,0x00,0x00,0x00,
-            0x00,0x00,0x00,0x03,0x00,0x00,0x00,0x00,
-            0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-            0x00,0x00,0x00,0x00,0x00,0x00
-          )
-          # Pad to correct size with blue pixels (0x00 0x77 0xFF = blue)
-          $pixelData = [byte[]](0x00) * (16 * 16 * 3 + 16 * 16 / 8)
-          # Fill with a blue color for all pixels
-          for ($i = 0; $i -lt 16 * 16; $i++) {
-            $pixelData[$i * 3 + 0] = 0xFF  # Blue
-            $pixelData[$i * 3 + 1] = 0x77  # Green
-            $pixelData[$i * 3 + 2] = 0x00  # Red (BGR format)
-          }
-          $fullIco = $bytes + $pixelData
-          [System.IO.File]::WriteAllBytes($icoPath, $fullIco)
-          Write-Host "Created fusion.ico at $icoPath"
+          New-Item -ItemType Directory -Force -Path "FusionBrowser\resources" | Out-Null
+          Add-Type -AssemblyName System.Drawing
+          $bmp = New-Object System.Drawing.Bitmap(32, 32)
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.Clear([System.Drawing.Color]::FromArgb(10, 122, 255))
+          $g.Dispose()
+          $ico = [System.Drawing.Icon]::FromHandle($bmp.GetHicon())
+          $stream = [System.IO.File]::OpenWrite("FusionBrowser\resources\fusion.ico")
+          $ico.Save($stream)
+          $stream.Close()
+          $bmp.Dispose()
+          Write-Host "Done: $(Test-Path 'FusionBrowser\resources\fusion.ico')"
 
       - name: Configure CMake
         shell: pwsh
@@ -65,14 +58,14 @@ jobs:
 
       - name: Build
         shell: pwsh
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --config Release --parallel 4
 
       - name: Prepare dist
         shell: pwsh
         run: |
           $exe = Get-ChildItem -Recurse -Filter "Fusion.exe" | Select-Object -First 1
           if (-not $exe) { throw "Fusion.exe not found!" }
-          Write-Host "Exe found: $($exe.FullName)"
+          Write-Host "Found: $($exe.FullName)"
           New-Item -ItemType Directory -Force -Path "dist\Fusion" | Out-Null
           Copy-Item $exe.FullName "dist\Fusion\Fusion.exe"
           Copy-Item "FusionBrowser\resources\fusion.ico" "dist\Fusion\" -ErrorAction SilentlyContinue
