@@ -32,30 +32,11 @@ jobs:
         shell: pwsh
         run: choco install ninja -y --no-progress
 
-      - name: Show Qt path
-        shell: pwsh
-        run: |
-          Write-Host "Qt6_DIR=$env:Qt6_DIR"
-          Write-Host "QT_ROOT_DIR=$env:QT_ROOT_DIR"
-          Get-ChildItem "C:\Qt" -ErrorAction SilentlyContinue | Select-Object Name
-
-      - name: Find Qt prefix
-        id: qtpath
-        shell: pwsh
-        run: |
-          $qt = Get-ChildItem "C:\Qt" -Directory | Where-Object { $_.Name -match "^6\." } | Select-Object -First 1
-          if ($qt) {
-            $kit = Get-ChildItem "$($qt.FullName)" -Directory | Where-Object { $_.Name -match "msvc" } | Select-Object -First 1
-            Write-Host "Found Qt kit: $($kit.FullName)"
-            echo "QTPREFIX=$($kit.FullName)" >> $env:GITHUB_OUTPUT
-          } else {
-            Write-Host "Falling back to Qt6_DIR: $env:Qt6_DIR"
-            echo "QTPREFIX=$env:Qt6_DIR" >> $env:GITHUB_OUTPUT
-          }
-
       - name: Configure CMake
         shell: pwsh
-        run: cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=${{ steps.qtpath.outputs.QTPREFIX }}"
+        run: |
+          Write-Host "Qt6_DIR = $env:Qt6_DIR"
+          cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$env:Qt6_DIR"
 
       - name: Build
         shell: pwsh
@@ -72,13 +53,7 @@ jobs:
           if (Test-Path "resources\fusion.ico") {
             Copy-Item "resources\fusion.ico" "dist\Fusion\"
           }
-
-      - name: windeployqt
-        shell: pwsh
-        run: |
-          $prefix = "${{ steps.qtpath.outputs.QTPREFIX }}"
-          $wdq = "$prefix\bin\windeployqt.exe"
-          & $wdq --release --webengine "dist\Fusion\Fusion.exe"
+          & "$env:Qt6_DIR\bin\windeployqt.exe" --release --webengine "dist\Fusion\Fusion.exe"
 
       - name: Upload
         uses: actions/upload-artifact@v4
